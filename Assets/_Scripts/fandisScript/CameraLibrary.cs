@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.VR;
 using UnityEngine.UI;
 
 public class CameraLibrary : MonoBehaviour 
@@ -66,6 +67,44 @@ public class CameraLibrary : MonoBehaviour
     }
 
     [System.Serializable]
+    // A class that manages interactions for mobile VR mode
+    public class MobileVR     
+    {
+        //to store how fast the camera will rotate
+        //public float rotationSpeed;
+        //to store how fast the camera will translate forward and backward
+        public float translationSpeed;
+        //to store the max zoomed in value of the camera
+        public float minFieldOfView;
+        //to store the max zoomed out value of the camera
+        public float maxFieldOfView;
+
+        //to know whether the camera is translating, or in idle status
+        //1 is idle
+        //3 is translating 
+        public int statusID;
+        
+        //to know whether the screen is being touched or not
+        public bool isScreenTouched;
+        
+        //to store the screen coordinate position where the screen is firstly touched
+        [HideInInspector] public Vector3 touchStartScreenPos = new Vector3(-10000f, -10000f, -10000f);
+        //to store the prev frame mouse position 
+        //[HideInInspector] public Vector3 prevFrameTouchPos;
+
+        //to store what kind of translation should be done next
+        //"F" is forward
+        //"S" is stop
+        //"B" is backward
+        [HideInInspector] public string[] translationArray = new string[4] {"S", "F", "S", "B"};
+        [HideInInspector] public int currentIdxInTranslationArray = 0;
+
+        //to store to which direction the camera should translate
+        //[HideInInspector] public Vector3 directionToTranslate;
+    }
+
+    [System.Serializable]
+    // A class that manages interactions for mobile gyro mode
     public class MobileGyro     
     {
         //to store how fast the camera will rotate
@@ -103,6 +142,7 @@ public class CameraLibrary : MonoBehaviour
 
     //an instance of each class
     public MobileTouch mobileTouch = new MobileTouch();
+    public MobileVR mobileVR = new MobileVR();
     public MobileGyro mobileGyro = new MobileGyro();
 
 	// Use this for initialization
@@ -116,6 +156,13 @@ public class CameraLibrary : MonoBehaviour
 	}
 	
 	// Update is called once per frame
+    void LateUpdate ()
+    {
+        //rotate the camera
+        //Camera.main.transform.parent.rotation = Camera.main.transform.rotation;
+        //Camera.main.transform.localEulerAngles = Vector3.zero;
+    }
+
 	void Update () 
     {
         #region MOBILE_TOUCH_UPDATE
@@ -201,7 +248,7 @@ public class CameraLibrary : MonoBehaviour
 					float yVelocity = -yDelta * mobileTouch.rotationSpeed * 0.1f;
 
 					//rotate the camera
-					Camera.main.transform.parent.eulerAngles += new Vector3(-yVelocity, xVelocity, 0f);
+					Camera.main.transform.eulerAngles += new Vector3(-yVelocity, xVelocity, 0f);
 					
                     //Camera.main.transform.Rotate (yVelocity, xVelocity, 0f);
                 }
@@ -214,14 +261,14 @@ public class CameraLibrary : MonoBehaviour
                 if (mobileTouch.translationArray[mobileTouch.currentIdxInTranslationArray] == "F" && !frontCollider.isHittingWall)
                 {
                     //move forward relative to the rotation of the camera
-                    Camera.main.transform.parent.position += Camera.main.transform.parent.forward * mobileTouch.translationSpeed * Time.deltaTime;
+                    Camera.main.transform.position += Camera.main.transform.forward * mobileTouch.translationSpeed * Time.deltaTime;
                 }
                 else
                 //if it's time to move backward
                 if (mobileTouch.translationArray[mobileTouch.currentIdxInTranslationArray] == "B" && !backCollider.isHittingWall)
                 {
                     //move negative forward relative to the rotation of the camera
-                    Camera.main.transform.parent.position -= Camera.main.transform.parent.forward * mobileTouch.translationSpeed * Time.deltaTime;
+                    Camera.main.transform.position -= Camera.main.transform.forward * mobileTouch.translationSpeed * Time.deltaTime;
                 }
 				
 				//if there's something blocking on the front
@@ -440,6 +487,249 @@ public class CameraLibrary : MonoBehaviour
 		}
         #endregion
 
+        #region MOBILE_VR_UPDATE
+        //if mobile VR
+        if (modeID == 2)
+        {
+            //if in idle status
+            if (mobileVR.statusID == 1)
+            {
+                //when the screen is touched
+                if (Input.GetButtonDown("Tap"))
+                {
+                    //store the first screen pos
+                    mobileVR.touchStartScreenPos = Input.mousePosition;
+
+                    //store to the variable
+                    mobileVR.isScreenTouched = true;
+                }
+
+                //when the screen is released
+                if (Input.GetButtonUp("Tap"))
+                {
+                    //reset the first screen pos
+                    mobileVR.touchStartScreenPos = new Vector3(-10000f, -10000f, -10000f);
+
+                    //mark the bool
+                    mobileVR.isScreenTouched = false;
+
+                    //save the direction to translate
+                    //mobileGyro.directionToTranslate = Camera.main.transform.forward;
+    
+                    //go to translation status
+                    mobileVR.statusID = 3;
+
+                    //check if it exceeds the length of the array or not
+                    //if not
+                    if (mobileVR.currentIdxInTranslationArray != mobileVR.translationArray.Length - 1)
+                    {
+                        //increase the index
+                        mobileVR.currentIdxInTranslationArray += 1;
+                    }
+                    //otherwise
+                    else
+                    {
+                        //reset back to zero
+                        mobileVR.currentIdxInTranslationArray = 0;
+                    }
+                }
+            }
+            else
+            //if in translation status
+            if (mobileVR.statusID == 3)
+            {
+                //if it's time to move forward
+                if (mobileVR.translationArray[mobileVR.currentIdxInTranslationArray] == "F" && !frontCollider.isHittingWall)
+                {
+                    //move forward relative to the rotation of the camera
+                    Camera.main.transform.parent.transform.parent.position += Camera.main.transform.parent.transform.parent.forward * mobileVR.translationSpeed * Time.deltaTime;
+
+                    //if it exceed the min value
+                    /*if (Camera.main.fieldOfView <= mobileGyro.minFieldOfView)
+                    {
+                        //clamp
+                        Camera.main.fieldOfView = mobileGyro.minFieldOfView;
+
+                        //go to idle status
+                        mobileGyro.statusID = 1;
+    
+                        //check if it exceeds the length of the array or not
+                        //if not
+                        if (mobileGyro.currentIdxInTranslationArray != mobileGyro.translationArray.Length - 1)
+                        {
+                            //increase the index
+                            mobileGyro.currentIdxInTranslationArray += 1;
+                        }
+                        //otherwise
+                        else
+                        {
+                            //reset back to zero
+                            mobileGyro.currentIdxInTranslationArray = 0;
+                        }
+                    }
+                    else
+                    {
+                        //decrease the field of view
+                        Camera.main.fieldOfView -= mobileGyro.translationSpeed * Time.deltaTime;
+                    }*/
+                }
+                else
+                //if it's time to move backward
+                if (mobileVR.translationArray[mobileVR.currentIdxInTranslationArray] == "B" && !backCollider.isHittingWall)
+                {
+                    //move negative forward relative to the rotation of the camera
+                    Camera.main.transform.parent.transform.parent.position -= Camera.main.transform.parent.transform.parent.forward * mobileVR.translationSpeed * Time.deltaTime;
+
+                    //if it exceed the max value
+                    /*if (Camera.main.fieldOfView >= mobileGyro.maxFieldOfView)
+                    {
+                        //clamp
+                        Camera.main.fieldOfView = mobileGyro.maxFieldOfView;
+
+                        //go to idle status
+                        mobileGyro.statusID = 1;
+    
+                        //check if it exceeds the length of the array or not
+                        //if not
+                        if (mobileGyro.currentIdxInTranslationArray != mobileGyro.translationArray.Length - 1)
+                        {
+                            //increase the index
+                            mobileGyro.currentIdxInTranslationArray += 1;
+                        }
+                        //otherwise
+                        else
+                        {
+                            //reset back to zero
+                            mobileGyro.currentIdxInTranslationArray = 0;
+                        }
+                    }
+                    else
+                    {
+                        //increase the field of view
+                        Camera.main.fieldOfView += mobileGyro.translationSpeed * Time.deltaTime;
+                    }*/
+                }
+                
+                //if there's something blocking on the front
+                if (mobileVR.translationArray[mobileVR.currentIdxInTranslationArray] == "F" && frontCollider.isHittingWall)
+                {
+                    //go to idle status
+                    mobileVR.statusID = 1;
+
+                    //check if it exceeds the length of the array or not
+                    //if not
+                    if (mobileVR.currentIdxInTranslationArray != mobileVR.translationArray.Length - 1)
+                    {
+                        //increase the index
+                        mobileVR.currentIdxInTranslationArray += 1;
+                        
+                        Debug.Log("Increase by 1");
+                    }
+                    //otherwise
+                    else
+                    {
+                        //reset back to zero
+                        mobileVR.currentIdxInTranslationArray = 0;
+                        
+                        Debug.Log("Back to 0");
+                    }
+                }
+                
+                //if there's something blocking on the back
+                if (mobileVR.translationArray[mobileVR.currentIdxInTranslationArray] == "B" && backCollider.isHittingWall)
+                {
+                    //go to idle status
+                    mobileVR.statusID = 1;
+
+                    //check if it exceeds the length of the array or not
+                    //if not
+                    if (mobileVR.currentIdxInTranslationArray != mobileVR.translationArray.Length - 1)
+                    {
+                        //increase the index
+                        mobileVR.currentIdxInTranslationArray += 1;
+                        
+                        Debug.Log("Increase by 1");
+                    }
+                    //otherwise
+                    else
+                    {
+                        //reset back to zero
+                        mobileVR.currentIdxInTranslationArray = 0;
+                        
+                        Debug.Log("Back to 0");
+                    }
+                }
+
+                //when the screen is touched
+                if (Input.GetButtonDown("Tap"))
+                {
+                    //store the first screen pos
+                    mobileVR.touchStartScreenPos = Input.mousePosition;
+
+                    //store to the variable
+                    mobileVR.isScreenTouched = true;
+                }
+
+                //when the screen is released
+                if (Input.GetButtonUp("Tap"))
+                {
+                    //reset the first screen pos
+                    mobileVR.touchStartScreenPos = new Vector3(-10000f, -10000f, -10000f);
+
+                    //mark the bool
+                    mobileVR.isScreenTouched = false;
+
+                    //go to idle status
+                    mobileVR.statusID = 1;
+
+                    //check if it exceeds the length of the array or not
+                    //if not
+                    if (mobileVR.currentIdxInTranslationArray != mobileVR.translationArray.Length - 1)
+                    {
+                        //increase the index
+                        mobileVR.currentIdxInTranslationArray += 1;
+                        
+                        Debug.Log("Increase by 1");
+                    }
+                    //otherwise
+                    else
+                    {
+                        //reset back to zero
+                        mobileVR.currentIdxInTranslationArray = 0;
+                        
+                        Debug.Log("Back to 0");
+                    }
+                }
+            }
+
+            //rotate the camera
+            //Camera.main.transform.parent.rotation = InputTracking.GetLocalRotation(VRNode.CenterEye);
+            
+            //Camera.main.transform.parent.eulerAngles = Camera.main.transform.eulerAngles;
+            //Camera.main.transform.parent.eulerAngles += new Vector3(-Input.gyro.rotationRateUnbiased.x * mobileGyro.rotationSpeed, -Input.gyro.rotationRateUnbiased.y * mobileGyro.rotationSpeed, 0f);
+            //Camera.main.transform.parent.rotation = InputTracking.GetLocalRotation(VRNode.Head);
+            //Camera.main.transform.parent.eulerAngles = Camera.main.transform.eulerAngles;
+            //Camera.main.transform.localEulerAngles = Vector3.zero;
+            //Camera.main.transform.eulerAngles += new Vector3(-Input.gyro.rotationRateUnbiased.x * mobileGyro.rotationSpeed, -Input.gyro.rotationRateUnbiased.y * mobileGyro.rotationSpeed, 0f);
+            //Camera.main.transform.Rotate (-Input.gyro.rotationRateUnbiased.x * mobileGyro.rotationSpeed, -Input.gyro.rotationRateUnbiased.y * mobileGyro.rotationSpeed, 0f);
+            //Camera.main.transform.eulerAngles += new Vector3(-Input.GetAxis("Vertical") * mobileGyro.rotationSpeed, Input.GetAxis("Horizontal") * mobileGyro.rotationSpeed, 0f);
+
+            //check if it exceeds the length of the array or not
+            //if not
+            if (mobileVR.currentIdxInTranslationArray != mobileVR.translationArray.Length - 1)
+            {
+                //update the next move text
+                nextMoveText.text = "" + mobileVR.translationArray[mobileVR.currentIdxInTranslationArray + 1];
+            }
+            //otherwise
+            else
+            {
+                //update the next move text
+                nextMoveText.text = "" + mobileVR.translationArray[0];
+            }
+        }
+        #endregion
+
         #region MOBILE_GYRO_UPDATE
         //if mobile gyro
         if (modeID == 3)
@@ -495,7 +785,7 @@ public class CameraLibrary : MonoBehaviour
                 if (mobileGyro.translationArray[mobileGyro.currentIdxInTranslationArray] == "F" && !frontCollider.isHittingWall)
                 {
                     //move forward relative to the rotation of the camera
-                    Camera.main.transform.parent.position += Camera.main.transform.parent.forward * mobileGyro.translationSpeed * Time.deltaTime;
+                    Camera.main.transform.position += Camera.main.transform.forward * mobileGyro.translationSpeed * Time.deltaTime;
 
                     //if it exceed the min value
                     /*if (Camera.main.fieldOfView <= mobileGyro.minFieldOfView)
@@ -531,7 +821,7 @@ public class CameraLibrary : MonoBehaviour
                 if (mobileGyro.translationArray[mobileGyro.currentIdxInTranslationArray] == "B" && !backCollider.isHittingWall)
                 {
                     //move negative forward relative to the rotation of the camera
-                    Camera.main.transform.parent.position -= Camera.main.transform.parent.forward * mobileGyro.translationSpeed * Time.deltaTime;
+                    Camera.main.transform.position -= Camera.main.transform.forward * mobileGyro.translationSpeed * Time.deltaTime;
 
                     //if it exceed the max value
                     /*if (Camera.main.fieldOfView >= mobileGyro.maxFieldOfView)
@@ -656,7 +946,7 @@ public class CameraLibrary : MonoBehaviour
             }
 
             //rotate the camera
-            Camera.main.transform.parent.eulerAngles += new Vector3(-Input.gyro.rotationRateUnbiased.x * mobileGyro.rotationSpeed, -Input.gyro.rotationRateUnbiased.y * mobileGyro.rotationSpeed, 0f);
+            Camera.main.transform.eulerAngles += new Vector3(-Input.gyro.rotationRateUnbiased.x * mobileGyro.rotationSpeed, -Input.gyro.rotationRateUnbiased.y * mobileGyro.rotationSpeed, 0f);
             //Camera.main.transform.Rotate (-Input.gyro.rotationRateUnbiased.x * mobileGyro.rotationSpeed, -Input.gyro.rotationRateUnbiased.y * mobileGyro.rotationSpeed, 0f);
             //Camera.main.transform.eulerAngles += new Vector3(-Input.GetAxis("Vertical") * mobileGyro.rotationSpeed, Input.GetAxis("Horizontal") * mobileGyro.rotationSpeed, 0f);
 
